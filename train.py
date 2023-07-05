@@ -29,7 +29,6 @@ def train(params:Dict):
   model   = Model(config)
 
   trainer = pl.Trainer(
-    gpus=1,
     max_epochs=config["max_epochs"],
     logger=[WandbLogger()]
   )
