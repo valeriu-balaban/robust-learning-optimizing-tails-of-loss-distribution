@@ -27,25 +27,12 @@ from torchmetrics import Accuracy
 from datasets import FMNISTNOISY, CIFAR10NOISY, CIFAR100NOISY, MemoryIterableDataset
 
 from robust_losses import \
-  moments_penalization, \
-  moments_2stages, \
   normalized_cross_entropy, \
   reverse_cross_entropy, \
-  MAE, \
-  HUBER, \
-  robust_mean, \
-  moments_penalization_cross_entropy, \
   term_transformation, \
   generalized_cross_entropy, \
   taylor_cross_entropy, \
-  RobustLoss, \
-  DualRobustLoss, \
-  DualVariance, \
-  VariancePenalization, \
   DistributionalVariancePenalization
-
-
-
 
 class Model(pl.LightningModule):
   """
@@ -85,14 +72,14 @@ class Model(pl.LightningModule):
         self.resnet = resnet34(num_classes=10)
 
 
-      self.acc_metric = Accuracy(average='none', num_classes=10)
+      self.acc_metric = Accuracy(average='none', num_classes=10, task='multiclass')
 
-      self.acc_clean_metric = Accuracy()
-      self.acc_noisy_metric = Accuracy()
+      self.acc_clean_metric = Accuracy(num_classes=10, task='multiclass')
+      self.acc_noisy_metric = Accuracy(num_classes=10, task='multiclass')
     
     elif self.hparams["dataset"] == "CIFAR-100":
       self.resnet = resnet34(num_classes=100)
-      self.acc_metric = Accuracy(average='none', num_classes=100)
+      self.acc_metric = Accuracy(average='none', num_classes=100, task='multiclass')
 
     elif self.hparams["dataset"] == "MNIST":
       self.conv_layers = nn.Sequential(
@@ -112,46 +99,18 @@ class Model(pl.LightningModule):
         nn.Linear(576, 10)
       )
 
-      self.acc_metric = Accuracy(average='none', num_classes=10)
+      # edit by JCS
+      self.acc_metric = Accuracy(average='none', num_classes=10, task='multiclass')
 
-      self.acc_clean_metric = Accuracy()
-      self.acc_noisy_metric = Accuracy()
+      self.acc_clean_metric = Accuracy(num_classes=10, task='multiclass')
+      self.acc_noisy_metric = Accuracy(num_classes=10, task='multiclass')
 
 
     self.Z_bar = None
 
     self.max_acc = 0
     self.loss_log = []
-
-    self.RL_const = RobustLoss(
-      self.hparams["lambda_2"], 
-      0, 
-      'chi-square',
-       max_iter=self.hparams["lambda_4"]
-    )
-
-    self.RL_reg = RobustLoss(
-      float('inf'), 
-      self.hparams["lambda_2"], 
-      'chi-square',
-       max_iter=self.hparams["lambda_4"]
-    )
-
-    self.RL_const_dual = DualRobustLoss(
-      self.hparams["lambda_2"], 
-      0, 
-      'chi-square',
-    )
-
-    self.RL_reg_dual = DualRobustLoss(
-      float('inf'), 
-      self.hparams["lambda_2"], 
-      'chi-square',
-    )
-
-    self.DV = DualVariance(self.hparams["lambda_2"])
-
-    self.VarPen = VariancePenalization(self.hparams["lambda_2"], self.hparams["lambda_3"])
+    
     self.DistVarPen = DistributionalVariancePenalization(self.hparams["lambda_2"], self.hparams["lambda_3"])
 
 
@@ -160,7 +119,7 @@ class Model(pl.LightningModule):
     self.class_weights = torch.ones((num_classes,))
 
     if self.hparams["imbalanced"] and self.hparams["lambda_4"] != 0:
-      # compute class weights when training with imbalanced data
+      # Compute class weights when training with imbalanced data
       GROUP1 = [9, 2, 3, 5, 4]
       alpha  = self.hparams["lambda_4"]
 
@@ -170,26 +129,26 @@ class Model(pl.LightningModule):
       # Make weights be mean 1 not to affect convergence speed
       self.class_weights *= 1 / self.class_weights.mean()
 
-    # Metrics to compute for each validatiop dataset
+    # Metrics to compute for each validation dataset
     if self.hparams["imbalanced"]:
       self.ds_metrics = nn.ModuleList([
-        Accuracy(),
-        Accuracy(),
-        Accuracy()
+        Accuracy(num_classes=10, task='multiclass'),
+        Accuracy(num_classes=10, task='multiclass'),
+        Accuracy(num_classes=10, task='multiclass')
       ])
       self.ds_perclass_metrics = nn.ModuleList([
-        Accuracy(average='none', num_classes=num_classes),
-        Accuracy(average='none', num_classes=num_classes),
-        Accuracy(average='none', num_classes=num_classes)
+        Accuracy(average='none', num_classes=num_classes, task='multiclass'),
+        Accuracy(average='none', num_classes=num_classes, task='multiclass'),
+        Accuracy(average='none', num_classes=num_classes, task='multiclass')
       ])
     else:
       self.ds_metrics = nn.ModuleList([
-        Accuracy(),
-        Accuracy()
+        Accuracy(num_classes=10, task='multiclass'),
+        Accuracy(num_classes=10, task='multiclass')
       ])
       self.ds_perclass_metrics = nn.ModuleList([
-        Accuracy(average='none', num_classes=num_classes),
-        Accuracy(average='none', num_classes=num_classes)
+        Accuracy(average='none', num_classes=num_classes, task='multiclass'),
+        Accuracy(average='none', num_classes=num_classes, task='multiclass')
       ])
 
 
@@ -244,36 +203,7 @@ class Model(pl.LightningModule):
       self.class_weights = self.class_weights.to(y_hat.device)
 
 
-    if self.hparams["loss_function"] == "moments":
-
-      l1, l2  = self.hparams["lambda_1"], self.hparams["lambda_2"]
-
-      # self.hparams["lambda_1"] = l1
-      # self.hparams["lambda_2"] = l2
-      # self.hparams["lambda_3"] = 0.0
-
-      losses      = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-      loss, prob  = moments_penalization(losses, [l1, l2], normalize=self.hparams["normalize"])
-
-      self.log_dict({
-        "prob-chi2-divergence": self.chi2_divergence(prob / prob.sum()),
-        "prob-chi2-normalization": prob.sum(),
-        "prob-sample-utilization": self.sample_utilization(prob),
-        "loss-variance": losses.var(),
-      })
-
-    elif self.hparams["loss_function"] == "newvarpen":
-
-      losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
-      loss    = self.VarPen(losses)
-
-      self.log_dict({
-        "prob-chi2-divergence": self.chi2_divergence(self.VarPen.prob),
-        "prob-sample-utilization": self.sample_utilization(self.VarPen.prob),
-        "loss-variance": losses.var(),
-      })
-
-    elif self.hparams["loss_function"] == "distributional-varpen":
+    if self.hparams["loss_function"] == "distributional-varpen":
 
       losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
       loss    = self.DistVarPen(losses)
@@ -294,187 +224,7 @@ class Model(pl.LightningModule):
       self.log_dict({
         "loss-variance": losses.var(),
       })
-
-    elif self.hparams["loss_function"] == "moments-2stages":
-
-      l1, l2  = self.hparams["lambda_1"], self.hparams["lambda_2"]
-
-      losses      = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-      loss, prob  = moments_2stages(losses, self.hparams["lambda_2"], self.hparams["lambda_3"])
-
-      self.log_dict({
-        "prob-chi2-divergence": self.chi2_divergence(prob / prob.sum()),
-        "prob-chi2-normalization": prob.sum(),
-        "prob-sample-utilization": self.sample_utilization(prob),
-        "loss-variance": losses.var(),
-      })
-
-    elif self.hparams["loss_function"] == "moments-dual":
-
-      losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-      loss    = self.DV(losses)
-
-      self.log_dict({
-        "prob-eta": self.DV.eta,
-        "prob-chi2-divergence": self.chi2_divergence(self.DV.prob),
-        "prob-sample-utilization": self.sample_utilization(self.DV.prob),
-        "loss-variance": losses.var(),
-      })
-
-    
-    elif self.hparams["loss_function"] == "chi2-constraint":
-
-      losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-      loss    = self.RL_const(losses)
-
-      self.log_dict({
-        "prob-chi2-divergence": self.chi2_divergence(self.RL_const.prob),
-        "prob-sample-utilization": self.sample_utilization(self.RL_const.prob),
-        "loss-variance": losses.var(),
-      })
-
-
-    elif self.hparams["loss_function"] == "chi2-regularized":
-
-      losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-      loss    = self.RL_reg(losses)
-
-      self.log_dict({
-        "prob-chi2-divergence": self.chi2_divergence(self.RL_reg.prob),
-        "prob-sample-utilization": self.sample_utilization(self.RL_reg.prob),
-        "loss-variance": losses.var(),
-      })
-
-    elif self.hparams["loss_function"] == "chi2-constraint-dual":
-
-      losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-      loss    = self.RL_const_dual(losses)
-
-      self.log_dict({
-        "prob-eta": self.RL_const_dual.eta,
-        "prob-chi2-divergence": self.chi2_divergence(self.RL_const_dual.prob),
-        "prob-sample-utilization": self.sample_utilization(self.RL_const_dual.prob),
-        "loss-variance": losses.var(),
-      })
-
-
-    elif self.hparams["loss_function"] == "chi2-regularized-dual":
-
-      losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-      loss    = self.RL_reg_dual(losses)
-
-      self.log_dict({
-        "prob-eta": self.RL_reg_dual.eta,
-        "prob-chi2-normalization": self.RL_reg_dual.prob.sum(),
-        "prob-chi2-divergence": self.chi2_divergence(self.RL_reg_dual.prob),
-        "prob-sample-utilization": self.sample_utilization(self.RL_reg_dual.prob),
-        "loss-variance": losses.var(),
-      })
-
-    elif self.hparams["loss_function"] == "direct-varpen":
-
-      losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-      loss    = losses.mean() + self.hparams["lambda_2"] * losses.var().pow(self.hparams["lambda_3"])
-      
-      self.log_dict({
-        "loss-variance": losses.var(),
-      })
-
-    elif self.hparams["loss_function"] == "moments-mae":
-
-      l1, l2  = self.hparams["lambda_1"], self.hparams["lambda_2"]
-      num_cls = 100 if self.hparams["dataset"] == "CIFAR-100" else 10
-
-      losses  = MAE(y_hat, y_target, num_cls)
-      loss    = moments_penalization(losses, [l1, l2], normalize=self.hparams["normalize"])
-
-    elif self.hparams["loss_function"] == "robust-mean":
-
-      eta, delta  = self.hparams["lambda_3"], self.hparams["lambda_3"]
-      losses      = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-      loss        = robust_mean(losses, eta, delta)
-
-    elif self.hparams["loss_function"] == "huber":
-
-      l1, l2  = self.hparams["lambda_1"], self.hparams["lambda_2"]
-      num_cls = 100 if self.hparams["dataset"] == "CIFAR-100" else 10
-
-      losses  = HUBER(y_hat, y_target, num_cls)
-      loss    = losses.mean()
-      # loss    = moments_penalization(losses, [l1, l2], normalize=self.hparams["normalize"])
-
-    elif self.hparams["loss_function"] == "moments-var":
-
-      l1, l2  = self.hparams["lambda_1"], self.hparams["lambda_2"]
-
-      # self.hparams["lambda_1"] = l1
-      # self.hparams["lambda_2"] = l2
-      # self.hparams["lambda_3"] = 0.0
-
-      losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-      loss    = moments_penalization(losses, [l1, l2], normalize=self.hparams["normalize"])
-
-    elif self.hparams["loss_function"] == "moments-square":
-
-      l1, l2, l3  = self.hparams["lambda_1"], self.hparams["lambda_2"], self.hparams["lambda_3"]
-
-      losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-      loss    = moments_penalization(losses, [l1, l2, l3], normalize=self.hparams["normalize"])
-
-    elif self.hparams["loss_function"] == "moments-cubic":
-
-      l1, l2, l3, l4  = self.hparams["lambda_1"], self.hparams["lambda_2"], self.hparams["lambda_3"], self.hparams["lambda_4"]
-
-      losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-      loss    = moments_penalization(losses, [l1, l2, l3, l4], normalize=self.hparams["normalize"])
-      
-    elif self.hparams["loss_function"] == "moments-convex":
-
-      l1, l2  = self.hparams["lambda_1"], self.hparams["lambda_2"]
-
-      losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-      loss    = moments_penalization_cross_entropy(losses, l1, l2, convex=True)
-
-    elif self.hparams["loss_function"] == "moments-skew":
-
-      l1, l2, l3  = [1.0, -0.5, self.hparams["lambda_3"]]
-
-      self.hparams["lambda_1"] = l1
-      self.hparams["lambda_2"] = l2
-
-      losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-      loss    = moments_penalization(losses, [l1, l2, l3])
-
-    elif self.hparams["loss_function"] == "moments-mean":
-
-      l1, l2  = self.hparams["lambda_1"], self.hparams["lambda_2"]
-
-      self.hparams["lambda_1"] = l1
-      self.hparams["lambda_2"] = l2
-      self.hparams["lambda_3"] = 0.0
-
-      alpha       = self.hparams["moments_alpha"]
-      num_classes = 100 if self.hparams["dataset"] == "CIFAR-100" else 10
-
-      losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-      z       = losses.detach()
-
-      # Compute mean loss for each class
-      if not hasattr(self, 'class_mean'):
-        self.class_mean = torch.zeros(num_classes, device=z.device)
-
-      z_mean = torch.zeros_like(z)
-      for c in range(num_classes):
-        mask               = (y_target == c)
-        if mask.any():
-          self.class_mean[c] = alpha * z[mask].mean() + (1.0 - alpha) * self.class_mean[c]
-          z_mean[mask]       = self.class_mean[c]
-
-      if self.hparams["wandb_log_hist"]:
-        wandb.log({"class-mean": wandb.Histogram(self.class_mean.cpu().numpy())})
-
-      loss    = moments_penalization(losses, [l1, l2], z_mean=z_mean)
-
+  
     elif self.hparams["loss_function"] == "normalized-symmetric":
 
       loss1   = normalized_cross_entropy(y_hat, y_target, num_classes=100 if self.hparams["dataset"] == "CIFAR-100" else 10)
@@ -532,52 +282,29 @@ class Model(pl.LightningModule):
     self.ds_metrics[dataloader_idx](y_pred, y_target)
     self.ds_perclass_metrics[dataloader_idx](y_pred, y_target)
 
-    # Log additiona info for the noisy validationa dataset
+    # Log additional info for the noisy validation dataset
     if self.hparams["wandb_log_hist"] and self.hparams["noise_rate"] and dataloader_idx == 0:
 
-      if self.hparams["loss_function"] == "moments":
-
-        l1, l2  = self.hparams["lambda_1"], self.hparams["lambda_2"]
-
-        losses      = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-        loss, prob  = moments_penalization(losses, [l1, l2], normalize=self.hparams["normalize"])
-
-        return {
-          "losses": losses.tolist(),
-          "prob": prob.tolist(),
-          "isclean": (y_target == y_target_original).tolist()
-        }
-
-      elif self.hparams["loss_function"] == "chi2-constraint-dual":
-
-        losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
-        loss    = self.RL_const_dual(losses)
-
-        return {
-          "losses": losses.tolist(),
-          "prob": self.RL_const_dual.prob.tolist(),
-          "isclean": (y_target == y_target_original).tolist()
-        }
-
-      elif self.hparams["loss_function"] == "distributional-varpen":
+      if self.hparams["loss_function"] == "distributional-varpen":
 
         losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none")
         loss    = self.DistVarPen(losses)
 
-        return {
+        self.validation_outputs = {
           "losses": losses.tolist(),
           "prob": self.DistVarPen.prob.tolist(),
           "isclean": (y_target == y_target_original).tolist()
         }
 
-    return {} 
+    self.validation_outputs = {} 
 
 
-  def validation_epoch_end(self, validation_outputs):
+  def on_validation_epoch_end(self):
     """
     Compute and log accuracies per class and per dataset
     """
-
+    validation_outputs = self.validation_outputs
+    
     log_data = {}
 
     for idx, metric in enumerate(self.ds_metrics):
@@ -634,12 +361,6 @@ class Model(pl.LightningModule):
               "params": self.fc_layers.parameters(), 
               "weight_decay": self.hparams["fc_l2_reg"],
             },
-            {
-              "params": self.RL_const_dual.parameters(),
-            },
-            {
-              "params": self.DV.parameters(),
-            }
           ],
           lr = self.hparams["learning_rate"],
           momentum = 0.9,
@@ -661,12 +382,6 @@ class Model(pl.LightningModule):
           {
             "params": self.resnet.parameters(), 
             "weight_decay": self.hparams["conv_l2_reg"],
-          },
-          {
-            "params": self.RL_const_dual.parameters(),
-          },
-          {
-            "params": self.DV.parameters(),
           }
         ],
         lr = self.hparams["learning_rate"],
