@@ -35,7 +35,8 @@ from robust_losses import \
   taylor_cross_entropy, \
   DistributionalVariancePenalization, \
   distributional_moments_penalization, \
-  f_div
+  f_div, \
+  compute_tail_metric
 
 class Model(pl.LightningModule):
   """
@@ -218,6 +219,7 @@ class Model(pl.LightningModule):
         "f-divergence": f_div(q, alpha),
         "prob-sample-utilization": self.sample_utilization(q),
         "delta": delta,
+        "tail-metric": compute_tail_metric(losses)
       })
 
     elif self.hparams["loss_function"] == "distributional-varpen":

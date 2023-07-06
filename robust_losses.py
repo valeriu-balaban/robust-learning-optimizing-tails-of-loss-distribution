@@ -473,3 +473,12 @@ def distributional_moments_penalization(z, rho, alpha=2, max_iter=100, debug=Fal
   except Exception as e:
     print(e)
     return torch.ones_like(z) / z.shape[0], float("nan")
+
+
+
+
+def compute_tail_metric(losses):
+  """Computes the tail of the distribution by evaluating the cummulant at 1 and substracting the mean"""
+  
+  z = losses.detach()
+  return torch.logsumexp(z, dim=0) - log(z.shape[0]) - z.mean()
