@@ -350,3 +350,119 @@ class DistributionalVariancePenalization(torch.nn.Module):
                 self.prob = self.findQ(v)
 
             return torch.dot(self.prob, v)
+
+
+
+### DISTRIBTUTIONAL MOMENTS PENALIZATION
+
+from scipy import optimize
+
+def f_div(q, alpha):
+  """Computes f-divergence of order alpha between q and the uniform distribution"""
+
+  # TO DO: Include formula for alpha == 0 and alpha == 1
+  return ((q * q.shape[0]).pow(alpha) - 1).mean() / (alpha * (alpha - 1))
+
+
+def limit_dist(z, limit="max"):
+  """Returns the limit distribution that maximizes/minimizes the expectation of z"""
+
+  q = (z == z.max()) if limit == "max" else (z == z.min())
+  return q / q.sum()
+
+
+def delta_dist(z, delta, alpha, limit="max"):
+  """Returns the distribution given an offset value rho"""
+
+  sign = +1 if limit == "max" else -1
+
+  q = torch.relu(sign * (z - delta)).pow(1 / (alpha - 1))
+
+  return q / q.sum()
+
+
+
+def distributional_moments_penalization(z, rho, alpha=2, max_iter=100, debug=False):  
+  """
+  Finds and returns the discrete distrbution Q_n that recovers distributional
+  moments penalization. Implements FindQ procedure of the paper.
+  Procedure is influenced by the RobustLoss of https://github.com/daniellevy/fast-dro
+  
+  Parameters
+  ----------
+  z : Tensor
+    Values of the random variable for which to penalize the variance
+  rho : float
+    Radius of the neighborhood of the discrete empirical distribution to consider
+  alpha : float
+    Order of the alpha divergence to use when defining the neighborhood
+  max_iter : int, optional
+    Number of iterations after which to stop the bisection search
+  debug: bool, optional
+    If True debugging messages are displayed
+
+  Returns
+  ----------
+  q : Tensor
+    Probabilities correspoding to each entry of the tensor z
+  """
+
+  # Check for variance minimization
+  assert rho >= 0, f"rho greater than 0 expected, got: {rho}"
+
+  try:
+
+    # Check for enough variance in z
+    if (z.max() - z.min()) / z.max() <= 1e-5:
+      return torch.ones_like(z) / z.shape[0]
+
+    # Check if the target divergence is achievable
+    q_lim = limit_dist(z, limit="min")
+
+    if debug:
+      print("Max div", f_div(q_lim, alpha))
+
+    if f_div(q_lim, alpha) < rho:
+      return q_lim
+
+
+    f = lambda delta: f_div(delta_dist(z, delta, alpha, limit="min"), alpha) - rho
+
+    # Set search upper bound
+    a = z.min() + 2 * torch.finfo(z.dtype).eps
+    upper   = f(any)
+
+    if debug:
+      print("Upper", upper)
+
+    b = z.max()
+    lower   = f(b)
+
+    if debug:
+      print("Lower", lower)
+
+    if debug:
+      print("Initial search bounds:", (b, a), " and difference:", (lower, upper))
+
+    # Double the interval until the root is between a and b
+    while lower > 0:
+      length    = b - a
+      a = b
+      b = b + 2 * length
+
+      upper = lower
+      lower = f(b)
+      
+
+      if debug:
+        print("Updated search bounds:", (b, a), " and difference:", (lower, upper))
+
+    r = optimize.brentq(f, a, b, full_output=True)
+    
+    if debug:
+      print(r)
+    return delta_dist(z, r[0], alpha, limit="min")
+  
+  except Exception as e:
+    print(e)
+    return torch.ones_like(z) / z.shape[0]

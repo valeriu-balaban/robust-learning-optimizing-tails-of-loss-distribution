@@ -32,7 +32,8 @@ from robust_losses import \
   term_transformation, \
   generalized_cross_entropy, \
   taylor_cross_entropy, \
-  DistributionalVariancePenalization
+  DistributionalVariancePenalization, \
+  distributional_moments_penalization
 
 class Model(pl.LightningModule):
   """
@@ -203,7 +204,16 @@ class Model(pl.LightningModule):
       self.class_weights = self.class_weights.to(y_hat.device)
 
 
-    if self.hparams["loss_function"] == "distributional-varpen":
+    if self.hparams["loss_function"] == "distributional-moments-penalization":
+
+      rho, alpha = self.hparams["lambda_1"], self.hparams["lambda_2"]
+
+      losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
+      q       = distributional_moments_penalization(losses.detach(), rho, alpha)
+
+      loss    = (q * losses).sum()
+
+    elif self.hparams["loss_function"] == "distributional-varpen":
 
       losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
       loss    = self.DistVarPen(losses)
