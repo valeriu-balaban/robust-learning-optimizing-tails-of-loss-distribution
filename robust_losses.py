@@ -360,8 +360,10 @@ from scipy import optimize
 def f_div(q, alpha):
   """Computes f-divergence of order alpha between q and the uniform distribution"""
 
-  # TO DO: Include formula for alpha == 0 and alpha == 1
-  return ((q * q.shape[0]).pow(alpha) - 1).mean() / (alpha * (alpha - 1))
+  if alpha == 1:
+    return ((q * q.shape[0]) * (q * q.shape[0]).log()).sum()
+  else:
+    return ((q * q.shape[0]).pow(alpha) - 1).mean() / (alpha * (alpha - 1))
 
 
 def limit_dist(z, limit="max"):
@@ -376,7 +378,10 @@ def delta_dist(z, delta, alpha, limit="max"):
 
   sign = +1 if limit == "max" else -1
 
-  q = torch.relu(sign * (z - delta)).pow(1 / (alpha - 1))
+  if alpha == 1:
+    q = (sign * (z / delta)).exp()
+  else:
+    q = torch.relu(sign * (z - delta)).pow(1 / (alpha - 1))
 
   return q / q.sum()
 
