@@ -430,7 +430,7 @@ def distributional_moments_penalization(z, rho, alpha=2, max_iter=100, debug=Fal
 
     # Set search upper bound
     a = z.min() + 2 * torch.finfo(z.dtype).eps
-    upper   = f(any)
+    upper   = f(a)
 
     if debug:
       print("Upper", upper)
