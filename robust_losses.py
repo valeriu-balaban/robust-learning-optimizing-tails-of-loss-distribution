@@ -419,7 +419,7 @@ def distributional_moments_penalization(z, rho, alpha=2, max_iter=100, debug=Fal
 
     # Check for enough variance in z
     if (z.max() - z.min()) / z.max() <= 1e-5:
-      return torch.ones_like(z) / z.shape[0]
+      return torch.ones_like(z) / z.shape[0], float("nan")
 
     # Check if the target divergence is achievable
     q_lim = limit_dist(z, limit="min")
@@ -428,7 +428,7 @@ def distributional_moments_penalization(z, rho, alpha=2, max_iter=100, debug=Fal
       print("Max div", f_div(q_lim, alpha))
 
     if f_div(q_lim, alpha) < rho:
-      return q_lim
+      return q_lim, float("nan")
 
 
     f = lambda delta: f_div(delta_dist(z, delta, alpha, limit="min"), alpha) - rho
@@ -466,8 +466,10 @@ def distributional_moments_penalization(z, rho, alpha=2, max_iter=100, debug=Fal
     
     if debug:
       print(r)
-    return delta_dist(z, r[0], alpha, limit="min")
+
+    delta = r[0]
+    return delta_dist(z, delta, alpha, limit="min"), delta
   
   except Exception as e:
     print(e)
-    return torch.ones_like(z) / z.shape[0]
+    return torch.ones_like(z) / z.shape[0], float("nan")

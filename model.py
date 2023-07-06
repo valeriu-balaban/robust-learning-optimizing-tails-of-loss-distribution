@@ -34,7 +34,8 @@ from robust_losses import \
   generalized_cross_entropy, \
   taylor_cross_entropy, \
   DistributionalVariancePenalization, \
-  distributional_moments_penalization
+  distributional_moments_penalization, \
+  f_div
 
 class Model(pl.LightningModule):
   """
@@ -209,10 +210,15 @@ class Model(pl.LightningModule):
 
       rho, alpha = self.hparams["lambda_1"], self.hparams["lambda_2"]
 
-      losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
-      q       = distributional_moments_penalization(losses.detach(), rho, alpha)
+      losses   = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
+      q, delta = distributional_moments_penalization(losses.detach(), rho, alpha)
 
-      loss    = (q * losses).sum()
+      loss     = (q * losses).sum()
+      self.log_dict({
+        "f-divergence": f_div(q, alpha),
+        "prob-sample-utilization": self.sample_utilization(q),
+        "delta": delta,
+      })
 
     elif self.hparams["loss_function"] == "distributional-varpen":
 
