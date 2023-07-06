@@ -217,7 +217,45 @@ def reverse_cross_entropy(input: Tensor, target: Tensor, num_classes:Optional[in
   return -(prob * log_1hot).sum(dim=1).mean()
 
 
-class DistributionalVariancePenalization(nn.Module):
+def bisection(eta_min, eta_max, f, tol=1e-6, max_iter=500):
+    """Expects f an increasing function and return eta in [eta_min, eta_max] 
+    s.t. |f(eta)| <= tol (or the best solution after max_iter iterations"""
+    lower = f(eta_min)
+    upper = f(eta_max)
+
+    # until the root is between eta_min and eta_max, double the length of the 
+    # interval starting at either endpoint.
+    while lower > 0 or upper < 0:
+        length = eta_max - eta_min
+        if lower > 0:
+            eta_max = eta_min
+            eta_min = eta_min - 2 * length
+        if upper < 0:
+            eta_min = eta_max
+            eta_max = eta_max + 2 * length
+
+        lower = f(eta_min)
+        upper = f(eta_max)
+
+    for _ in range(max_iter):
+        eta = 0.5 * (eta_min + eta_max)
+
+        v = f(eta)
+
+        if torch.abs(v) <= tol:
+            return eta
+
+        if v > 0:
+            eta_max = eta
+        elif v < 0:
+            eta_min = eta
+
+    # if the minimum is not reached in max_iter, returns the current value
+    # logging.warning('Maximum number of iterations exceeded in bisection')
+    return 0.5 * (eta_min + eta_max)
+
+
+class DistributionalVariancePenalization(torch.nn.Module):
     """PyTorch module for the batch robust loss estimator"""
     def __init__(self, lmbda, gamma=1, tol=1e-4, max_iter=1000):
         """
@@ -240,6 +278,8 @@ class DistributionalVariancePenalization(nn.Module):
 
 
     def findQ(self, v):
+        MIN_REL_DIFFERENCE = 1e-5
+
         m = v.shape[0]
         size = self.lmbda ** 2
         size *= v.var().pow(2*self.gamma-1)
