@@ -30,7 +30,7 @@ def train(params:Dict):
 
   trainer = pl.Trainer(
     max_epochs=config["max_epochs"],
-    logger=[WandbLogger()]
+    logger=[WandbLogger(log_model=True)]
   )
 
   trainer.fit(model)
