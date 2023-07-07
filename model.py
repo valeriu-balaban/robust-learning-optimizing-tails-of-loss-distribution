@@ -223,12 +223,51 @@ class Model(pl.LightningModule):
         "tail-metric": compute_tail_metric(losses)
       })
 
+    if self.hparams["loss_function"] == "distributional-moments-penalization-fast":
+
+      rho, alpha = self.hparams["lambda_1"], self.hparams["lambda_2"]
+
+      losses   = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
+      
+      if self.global_step % 10 == 0:
+        # update delta 
+        q, delta   = distributional_moments_penalization(losses.detach(), rho, alpha)
+        self.delta = 0.95 * getattr(self, 'delta', delta) + 0.05 * delta
+      
+      else:
+        # use previously computed delta
+        q        = delta_dist(losses.detach(), self.delta, alpha, limit="min")
+
+      loss     = (q * losses).sum()
+      self.log_dict({
+        "f-divergence": f_div(q, alpha),
+        "prob-sample-utilization": self.sample_utilization(q),
+        "delta": self.delta,
+        "tail-metric": compute_tail_metric(losses)
+      })
+
     elif self.hparams["loss_function"] == "ciw":
 
       delta, alpha = self.hparams["lambda_1"], self.hparams["lambda_2"]
 
       losses   = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
       q        = delta_dist(losses.detach(), delta, alpha, limit="min")
+
+      loss     = (q * losses).sum()
+      self.log_dict({
+        "f-divergence": f_div(q, alpha),
+        "prob-sample-utilization": self.sample_utilization(q),
+        "tail-metric": compute_tail_metric(losses)
+      })
+
+    elif self.hparams["loss_function"] == "ciw-dro":
+
+      delta, alpha = self.hparams["lambda_1"], self.hparams["lambda_2"]
+      delta_dro    = self.hparams["lambda_3"]
+
+      losses   = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
+      q        = delta_dist(losses.detach(), delta, alpha, limit="min")
+      q[q > 0] = delta_dist(q[q > 0], delta_dro, alpha, limit="max")
 
       loss     = (q * losses).sum()
       self.log_dict({
