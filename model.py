@@ -222,6 +222,28 @@ class Model(pl.LightningModule):
         "tail-metric": compute_tail_metric(losses)
       })
 
+
+    elif self.hparams["loss_function"] == "distributional-moments-penalization-new":
+
+      rho, alpha = self.hparams["lambda_1"], self.hparams["lambda_2"]
+
+      losses   = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
+      q, delta = distributional_moments_penalization(losses.detach(), rho, alpha)
+      
+      if self.current_epoch  > 1:
+        # equalize the prob of non-zero samples
+        q        = (q > 0).float()
+        q        = q / q.sum()
+
+      loss     = (q * losses).sum()
+    
+      self.log_dict({
+        "f-divergence": f_div(q, alpha),
+        "prob-sample-utilization": self.sample_utilization(q),
+        "delta": delta,
+        "tail-metric": compute_tail_metric(losses)
+      })
+
     elif self.hparams["loss_function"] == "distributional-varpen":
 
       losses  = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
