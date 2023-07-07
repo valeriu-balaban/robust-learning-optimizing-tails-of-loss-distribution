@@ -36,6 +36,7 @@ from robust_losses import \
   DistributionalVariancePenalization, \
   distributional_moments_penalization, \
   f_div, \
+  delta_dist, \
   compute_tail_metric
 
 class Model(pl.LightningModule):
@@ -222,6 +223,19 @@ class Model(pl.LightningModule):
         "tail-metric": compute_tail_metric(losses)
       })
 
+    elif self.hparams["loss_function"] == "ciw":
+
+      delta, alpha = self.hparams["lambda_1"], self.hparams["lambda_2"]
+
+      losses   = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
+      q        = delta_dist(losses.detach(), delta, alpha, limit="min")
+
+      loss     = (q * losses).sum()
+      self.log_dict({
+        "f-divergence": f_div(q, alpha),
+        "prob-sample-utilization": self.sample_utilization(q),
+        "tail-metric": compute_tail_metric(losses)
+      })
 
     elif self.hparams["loss_function"] == "distributional-moments-penalization-new":
 
