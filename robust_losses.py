@@ -482,3 +482,117 @@ def compute_tail_metric(losses):
   
   z = losses.detach()
   return torch.logsumexp(z, dim=0) - log(z.shape[0]) - z.mean()
+
+
+def distributional_variance_penalization(z, lmbda=0.0, gamma=1.0, tol=1e-5, max_iter=100):
+  """
+  Finds and returns the discrete distrbution Q_n that recovers distributional
+  variance penalization. Implements FindQ procedure of the paper.
+
+  Procedure extends the RobustLoss of https://github.com/daniellevy/fast-dro
+
+  Parameters
+  ----------
+  z : Tensor
+    Values of the random variable for which to penalize the variance
+  lmbda : float
+    Variance penalization factor, i.e., lmbda * Var
+  gamma : float
+    Exponent of the varaince term, i.e., Var ** gamma
+  tol : float, optional
+    Tolerance parameter for the bisection
+  max_iter : int, optional
+    Number of iterations after which to stop the bisection search
+
+  Returns
+  ----------
+  q : Tensor
+    Probabilities correspoding to each entry of the tensor z
+  """
+
+  debug = False
+  m = z.shape[0]
+  target_D_chi2 = (lmbda ** 2) * z.var().pow(2*gamma-1)
+
+  if debug:
+    print("Variance", z.var(), "Target D_chi2", target_D_chi2)
+
+  # Check for variance minimization
+  assert lmbda >= 0, f"lmbda greater than 0 expected, got: {lmbda}"
+
+  # Check for enough variance in z
+  if (z.max() - z.min()) / z.max() <= tol:
+    return torch.ones_like(z) / m
+
+  # Check if the target divergence is achievable
+  r     = (z == z.max()).float()
+  q_max = r / r.sum()
+
+  if (z.shape[0] * q_max - 1).square().mean() < target_D_chi2:
+    # Return the distribution that achieves the maximum divergence
+    return q_max
+
+
+  def f(rho):
+    """Computes Chi 2 divergence between z and q generated using rho"""
+    r = torch.relu(z - rho)
+    q = r / r.sum()
+    current_D_chi2 = (z.shape[0] * q - 1).square().mean()
+
+    return current_D_chi2 - target_D_chi2
+
+  # Set search upper bound
+  rho_max = z.max() - torch.finfo(z.dtype).eps
+  upper   = f(rho_max)
+  
+  # Not enough precision, solution is within epsilon of z.max()
+  if upper < 0:
+    return q_max
+
+
+  # Set search lower bound
+  rho_min = -(1.0 / ((2 * target_D_chi2 + 1).sqrt() - 1)) * z.max()
+  lower   = f(rho_min)
+
+  # Samples are too close
+  if lower.isfinite() == False:
+    return torch.ones_like(z) / m
+
+  if debug:
+    print("Initial search bounds:", (rho_min, rho_max), " and difference:", (lower, upper))
+
+  # Double the interval until the root is between rho_min and rho_max
+  while lower > 0:
+    length  = rho_max - rho_min
+    rho_max = rho_min
+    rho_min = rho_min - 2 * length
+
+    lower = f(rho_min)
+    upper = f(rho_max)
+    
+    if debug:
+      print("Updated search bounds:", (rho_min, rho_max), " and difference:", (lower, upper))
+
+  # Search using bisection
+  for _ in range(max_iter):
+    rho = 0.5 * (rho_min + rho_max)
+
+    diff = f(rho)
+
+    if debug:
+      print("Searching interval:", (rho_min, rho_max), "and half interval diff:", diff)
+
+    if torch.abs(diff) <= tol:
+      r = torch.relu(z - rho)
+      q = r / r.sum()
+      return q
+
+    if diff > 0:
+      rho_max = rho
+    elif diff < 0:
+      rho_min = rho
+
+  # Reached max_iter, return what we have
+  r = torch.relu(z - 0.5 * (rho_min + rho_max) )
+  q = r / r.sum()
+  return q

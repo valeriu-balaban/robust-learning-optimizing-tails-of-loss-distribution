@@ -37,7 +37,8 @@ from robust_losses import \
   distributional_moments_penalization, \
   f_div, \
   delta_dist, \
-  compute_tail_metric
+  compute_tail_metric, \
+  distributional_variance_penalization
 
 class Model(pl.LightningModule):
   """
@@ -273,6 +274,38 @@ class Model(pl.LightningModule):
       self.log_dict({
         "f-divergence": f_div(q, alpha),
         "prob-sample-utilization": self.sample_utilization(q),
+        "tail-metric": compute_tail_metric(losses)
+      })
+
+    elif self.hparams["loss_function"] == "class-based-penalization":
+
+      rho_c    = self.hparams["lambda_3"]
+      rho_max  = self.hparams["lambda_1"]
+      
+
+      losses   = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
+      
+      z   = losses.detach()
+      V_c = torch.tensor([z[y_target == g].var() for g in range(10)])
+
+      # Find class rho
+      rho_c = rho_max * distributional_variance_penalization(V_c, rho_c, 0.5)
+
+      # Assign weights to samples
+      w = torch.zeros_like(z)
+      logs = {}
+      for g in range(10):
+        w_i, delta = distributional_moments_penalization(z[y_target == g], rho_c[g], 2)
+        w[y_target == g] = w_i * (y_target == g).sum() / y_target.shape[0]
+        logs[f"class-{g}-utilization"] = self.sample_utilization(w_i)
+        logs[f"class-{g}-rho"] = rho_c[g]
+
+      loss = (w * losses).sum()
+
+      self.log_dict(logs)
+      self.log_dict({
+        "f-divergence": f_div(w, 2),
+        "prob-sample-utilization": self.sample_utilization(w),
         "tail-metric": compute_tail_metric(losses)
       })
 
