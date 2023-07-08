@@ -361,7 +361,7 @@ def f_div(q, alpha):
   """Computes f-divergence of order alpha between q and the uniform distribution"""
 
   if alpha == 1:
-    return ((q * q.shape[0]) * (q * q.shape[0]).log()).sum()
+    return (q * (q * q.shape[0]).log()).sum()
   else:
     return ((q * q.shape[0]).pow(alpha) - 1).mean() / (alpha * (alpha - 1))
 
