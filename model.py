@@ -214,7 +214,8 @@ class Model(pl.LightningModule):
       rho, alpha = self.hparams["lambda_1"], self.hparams["lambda_2"]
 
       losses   = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
-      q, delta = distributional_moments_penalization(losses.detach(), rho, alpha)
+      z        = losses.detach()
+      q, delta = distributional_moments_penalization(z, rho, alpha)
 
       loss     = (q * losses).sum()
       self.log_dict({
@@ -238,15 +239,16 @@ class Model(pl.LightningModule):
       rho, alpha = self.hparams["lambda_1"], self.hparams["lambda_2"]
 
       losses   = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
-      
+      z        = losses.detach()
+
       if self.global_step % 10 == 0:
         # update delta 
-        q, delta   = distributional_moments_penalization(losses.detach(), rho, alpha)
+        q, delta   = distributional_moments_penalization(z, rho, alpha)
         self.delta = 0.95 * getattr(self, 'delta', delta) + 0.05 * delta
       
       else:
         # use previously computed delta
-        q        = delta_dist(losses.detach(), self.delta, alpha, limit="min")
+        q        = delta_dist(z, self.delta, alpha, limit="min")
 
       loss     = (q * losses).sum()
       self.log_dict({
