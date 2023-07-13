@@ -272,13 +272,22 @@ class Model(pl.LightningModule):
       delta, alpha = self.hparams["lambda_1"], self.hparams["lambda_2"]
 
       losses   = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
+      z        = losses.detach()
       q        = delta_dist(losses.detach(), delta, alpha, limit="min")
 
       loss     = (q * losses).sum()
       self.log_dict({
         "f-divergence": f_div(q, alpha),
         "prob-sample-utilization": self.sample_utilization(q),
-        "tail-metric": compute_tail_metric(losses)
+        "prob-sample-utilization-noisy": self.sample_utilization(q[y_target != y_target_original]),
+        "prob-sample-utilization-clean": self.sample_utilization(q[y_target == y_target_original]),
+        "tail-metric": compute_tail_metric(losses),
+        "loss-noisy-mean": z[y_target != y_target_original].mean(),
+        "loss-noisy-std": z[y_target != y_target_original].std(),
+        "loss-noisy-min": z[y_target != y_target_original].min(),
+        "loss-clean-mean": z[y_target == y_target_original].mean(),
+        "loss-clean-std": z[y_target == y_target_original].std(),
+        "loss-clean-min": z[y_target == y_target_original].min(),
       })
 
     elif self.hparams["loss_function"] == "ciw-dro":
