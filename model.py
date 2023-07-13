@@ -221,7 +221,16 @@ class Model(pl.LightningModule):
         "f-divergence": f_div(q, alpha),
         "prob-sample-utilization": self.sample_utilization(q),
         "delta": delta,
-        "tail-metric": compute_tail_metric(losses)
+        "tail-metric": compute_tail_metric(losses),
+        "prob-sample-utilization-noisy": self.sample_utilization(q[y_target != y_target_original]),
+        "prob-sample-utilization-clean": self.sample_utilization(q[y_target == y_target_original]),
+        "tail-metric": compute_tail_metric(losses),
+        "loss-noisy-mean": z[y_target != y_target_original].mean(),
+        "loss-noisy-std": z[y_target != y_target_original].std(),
+        "loss-noisy-min": z[y_target != y_target_original].min(),
+        "loss-clean-mean": z[y_target == y_target_original].mean(),
+        "loss-clean-std": z[y_target == y_target_original].std(),
+        "loss-clean-min": z[y_target == y_target_original].min(),
       })
 
     if self.hparams["loss_function"] == "distributional-moments-penalization-fast":
@@ -244,7 +253,16 @@ class Model(pl.LightningModule):
         "f-divergence": f_div(q, alpha),
         "prob-sample-utilization": self.sample_utilization(q),
         "delta": self.delta,
-        "tail-metric": compute_tail_metric(losses)
+        "tail-metric": compute_tail_metric(losses),
+        "prob-sample-utilization-noisy": self.sample_utilization(q[y_target != y_target_original]),
+        "prob-sample-utilization-clean": self.sample_utilization(q[y_target == y_target_original]),
+        "tail-metric": compute_tail_metric(losses),
+        "loss-noisy-mean": z[y_target != y_target_original].mean(),
+        "loss-noisy-std": z[y_target != y_target_original].std(),
+        "loss-noisy-min": z[y_target != y_target_original].min(),
+        "loss-clean-mean": z[y_target == y_target_original].mean(),
+        "loss-clean-std": z[y_target == y_target_original].std(),
+        "loss-clean-min": z[y_target == y_target_original].min(),
       })
 
     elif self.hparams["loss_function"] == "ciw":
