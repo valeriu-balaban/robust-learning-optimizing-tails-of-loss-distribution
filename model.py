@@ -337,6 +337,41 @@ class Model(pl.LightningModule):
         
       })
 
+    elif self.hparams["loss_function"] == "clean-data-dro":
+
+      rho, alpha = self.hparams["lambda_1"], self.hparams["lambda_2"]
+      # delta_dro    = self.hparams["lambda_3"]
+
+      losses   = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
+      z        = losses.detach()
+      w        = (y_target == y_target_original).float()
+      
+      if self.global_step % 10 == 0:
+        # update delta 
+        q, delta   = distributional_variance_penalization(z, rho)
+        self.delta = 0.95 * getattr(self, 'delta', delta) + 0.05 * delta
+      
+      else:
+        # use previously computed delta
+        q        = delta_dist(z, self.delta, alpha, limit="max")
+
+
+      loss     = (q * losses).sum()
+      self.log_dict({
+        "f-divergence": f_div(q, alpha),
+        "prob-sample-utilization": self.sample_utilization(q),
+        "prob-sample-utilization-noisy": self.sample_utilization(q[y_target != y_target_original]),
+        "prob-sample-utilization-clean": self.sample_utilization(q[y_target == y_target_original]),
+        "tail-metric": compute_tail_metric(losses),
+        "loss-noisy-mean": z[y_target != y_target_original].mean(),
+        "loss-noisy-std": z[y_target != y_target_original].std(),
+        "loss-noisy-min": z[y_target != y_target_original].min(),
+        "loss-clean-mean": z[y_target == y_target_original].mean(),
+        "loss-clean-std": z[y_target == y_target_original].std(),
+        "loss-clean-min": z[y_target == y_target_original].min(),
+        "delta": self.delta,
+      })
+
     elif self.hparams["loss_function"] == "ciw-dro":
 
       rho, alpha = self.hparams["lambda_1"], self.hparams["lambda_2"]
