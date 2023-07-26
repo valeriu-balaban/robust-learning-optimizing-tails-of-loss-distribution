@@ -303,7 +303,7 @@ class Model(pl.LightningModule):
         q_n, delta_n   = distributional_moments_penalization(z, rho_n, alpha)
         self.delta_n = 0.95 * getattr(self, 'delta_n', delta_n) + 0.05 * delta_n
 
-        if self.current_epoch >= 40:
+        if self.current_epoch >= 20:
           q_c, delta_c   = distributional_variance_penalization(q_n * z, rho_c)
           self.delta_c = 0.95 * getattr(self, 'delta_c', delta_c) + 0.05 * delta_c
         else:
@@ -322,6 +322,7 @@ class Model(pl.LightningModule):
       self.log_dict({
         "f-divergence": f_div(q_n, alpha),
         "prob-sample-utilization": self.sample_utilization(q_n),
+        "prob-sample-utilization-noisy-clean": self.sample_utilization(q_n * q_c),
         "prob-sample-utilization-noisy": self.sample_utilization(q_n[y_target != y_target_original]),
         "prob-sample-utilization-clean": self.sample_utilization(q_n[y_target == y_target_original]),
         "tail-metric": compute_tail_metric(losses),
