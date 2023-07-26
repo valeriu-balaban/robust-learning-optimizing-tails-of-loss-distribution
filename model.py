@@ -312,7 +312,7 @@ class Model(pl.LightningModule):
       else:
         # use previously computed delta
         q_n     = delta_dist(z, self.delta_n, alpha, limit="min")
-        if self.current_epoch >= 40:
+        if self.current_epoch >= 20:
           q_c     = delta_dist(z, self.delta_c, 2, limit="max")
         else:
           q_c = 1
