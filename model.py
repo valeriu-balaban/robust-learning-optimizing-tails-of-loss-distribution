@@ -290,6 +290,44 @@ class Model(pl.LightningModule):
         "loss-clean-min": z[y_target == y_target_original].min(),
       })
 
+    elif self.hparams["loss_function"] == "distributional-moments-penalization-dro":
+
+      rho_n, alpha = self.hparams["lambda_1"], self.hparams["lambda_2"]
+      rho_c        = self.hparams["lambda_3"]
+
+      losses   = nn.functional.cross_entropy(y_hat, y_target, reduction="none", weight=self.class_weights)
+      z        = losses.detach()
+      
+      if self.global_step % 10 == 0:
+        # update delta 
+        q_n, delta_n   = distributional_moments_penalization(z, rho_n, alpha)
+        self.delta_n = 0.95 * getattr(self, 'delta_n', delta_n) + 0.05 * delta_n
+
+        q_c, delta_c   = distributional_variance_penalization(q_n * z, rho_c)
+        self.delta_c = 0.95 * getattr(self, 'delta_c', delta_c) + 0.05 * delta_c
+      
+      else:
+        # use previously computed delta
+        q_n     = delta_dist(z, self.delta_n, alpha, limit="min")
+        q_c     = delta_dist(z, self.delta_c, 2, limit="max")
+
+      loss     = (q_c * q_n * losses).sum()
+      
+      self.log_dict({
+        "f-divergence": f_div(q, alpha),
+        "prob-sample-utilization": self.sample_utilization(q),
+        "prob-sample-utilization-noisy": self.sample_utilization(q[y_target != y_target_original]),
+        "prob-sample-utilization-clean": self.sample_utilization(q[y_target == y_target_original]),
+        "tail-metric": compute_tail_metric(losses),
+        "loss-noisy-mean": z[y_target != y_target_original].mean(),
+        "loss-noisy-std": z[y_target != y_target_original].std(),
+        "loss-noisy-min": z[y_target != y_target_original].min(),
+        "loss-clean-mean": z[y_target == y_target_original].mean(),
+        "loss-clean-std": z[y_target == y_target_original].std(),
+        "loss-clean-min": z[y_target == y_target_original].min(),
+        "delta": self.delta,
+      })
+
     elif self.hparams["loss_function"] == "ciw-dro":
 
       rho, alpha = self.hparams["lambda_1"], self.hparams["lambda_2"]

@@ -419,7 +419,7 @@ def distributional_moments_penalization(z, rho, alpha=2, max_iter=100, debug=Fal
 
     # Check for enough variance in z
     if (z.max() - z.min()) / z.max() <= 1e-5:
-      return torch.ones_like(z) / z.shape[0], float("nan")
+      return torch.ones_like(z) / z.shape[0], 0
 
     # Check if the target divergence is achievable
     q_lim = limit_dist(z, limit="min")
@@ -428,7 +428,7 @@ def distributional_moments_penalization(z, rho, alpha=2, max_iter=100, debug=Fal
       print("Max div", f_div(q_lim, alpha))
 
     if f_div(q_lim, alpha) < rho:
-      return q_lim, float("nan")
+      return q_lim, 0
 
 
     f = lambda delta: f_div(delta_dist(z, delta, alpha, limit="min"), alpha) - rho
@@ -484,7 +484,7 @@ def compute_tail_metric(losses):
   return torch.logsumexp(z, dim=0) - log(z.shape[0]) - z.mean()
 
 
-def distributional_variance_penalization(z, lmbda=0.0, gamma=1.0, tol=1e-5, max_iter=100):
+def distributional_variance_penalization(z, lmbda=0.0, tol=1e-5, max_iter=100):
   """
   Finds and returns the discrete distrbution Q_n that recovers distributional
   variance penalization. Implements FindQ procedure of the paper.
@@ -512,7 +512,7 @@ def distributional_variance_penalization(z, lmbda=0.0, gamma=1.0, tol=1e-5, max_
 
   debug = False
   m = z.shape[0]
-  target_D_chi2 = (lmbda ** 2) * z.var().pow(2*gamma-1)
+  target_D_chi2 = lmbda 
 
   if debug:
     print("Variance", z.var(), "Target D_chi2", target_D_chi2)
@@ -522,22 +522,22 @@ def distributional_variance_penalization(z, lmbda=0.0, gamma=1.0, tol=1e-5, max_
 
   # Check for enough variance in z
   if (z.max() - z.min()) / z.max() <= tol:
-    return torch.ones_like(z) / m
+    return torch.ones_like(z) / m, 0
 
   # Check if the target divergence is achievable
   r     = (z == z.max()).float()
   q_max = r / r.sum()
 
-  if (z.shape[0] * q_max - 1).square().mean() < target_D_chi2:
+  if (z.shape[0] * q_max - 1).square().mean()/2 < target_D_chi2:
     # Return the distribution that achieves the maximum divergence
-    return q_max
+    return q_max, 0
 
 
   def f(rho):
     """Computes Chi 2 divergence between z and q generated using rho"""
     r = torch.relu(z - rho)
     q = r / r.sum()
-    current_D_chi2 = (z.shape[0] * q - 1).square().mean()
+    current_D_chi2 = (z.shape[0] * q - 1).square().mean()/2
 
     return current_D_chi2 - target_D_chi2
 
@@ -547,7 +547,7 @@ def distributional_variance_penalization(z, lmbda=0.0, gamma=1.0, tol=1e-5, max_
   
   # Not enough precision, solution is within epsilon of z.max()
   if upper < 0:
-    return q_max
+    return q_max, 0
 
 
   # Set search lower bound
@@ -556,7 +556,7 @@ def distributional_variance_penalization(z, lmbda=0.0, gamma=1.0, tol=1e-5, max_
 
   # Samples are too close
   if lower.isfinite() == False:
-    return torch.ones_like(z) / m
+    return torch.ones_like(z) / m, 
 
   if debug:
     print("Initial search bounds:", (rho_min, rho_max), " and difference:", (lower, upper))
@@ -585,7 +585,7 @@ def distributional_variance_penalization(z, lmbda=0.0, gamma=1.0, tol=1e-5, max_
     if torch.abs(diff) <= tol:
       r = torch.relu(z - rho)
       q = r / r.sum()
-      return q
+      return q, rho
 
     if diff > 0:
       rho_max = rho
@@ -595,4 +595,4 @@ def distributional_variance_penalization(z, lmbda=0.0, gamma=1.0, tol=1e-5, max_
   # Reached max_iter, return what we have
   r = torch.relu(z - 0.5 * (rho_min + rho_max) )
   q = r / r.sum()
-  return q
+  return q, 0.5 * (rho_min + rho_max)
