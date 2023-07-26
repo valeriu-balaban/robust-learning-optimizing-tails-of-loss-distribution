@@ -312,10 +312,10 @@ class Model(pl.LightningModule):
         q_c     = delta_dist(z, self.delta_c, 2, limit="max")
 
       loss     = (q_c * q_n * losses).sum()
-      
+
       self.log_dict({
-        "f-divergence": f_div(q, alpha),
-        "prob-sample-utilization": self.sample_utilization(q),
+        "f-divergence": f_div(q_n, alpha),
+        "prob-sample-utilization": self.sample_utilization(q_n),
         "prob-sample-utilization-noisy": self.sample_utilization(q[y_target != y_target_original]),
         "prob-sample-utilization-clean": self.sample_utilization(q[y_target == y_target_original]),
         "tail-metric": compute_tail_metric(losses),
