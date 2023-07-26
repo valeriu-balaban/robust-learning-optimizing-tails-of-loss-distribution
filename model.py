@@ -346,15 +346,17 @@ class Model(pl.LightningModule):
       z        = losses.detach()
       w        = (y_target == y_target_original).float()
       
-      if self.global_step % 10 == 0:
-        # update delta 
-        q, delta   = distributional_variance_penalization(w*z, rho)
-        self.delta = 0.95 * getattr(self, 'delta', delta) + 0.05 * delta
-      
+      if rho > 0:
+        if self.global_step % 10 == 0:
+          # update delta 
+          q, delta   = distributional_variance_penalization(w*z, rho)
+          self.delta = 0.95 * getattr(self, 'delta', delta) + 0.05 * delta
+        
+        else:
+          # use previously computed delta
+          q        = delta_dist(w*z, self.delta, alpha, limit="max")
       else:
-        # use previously computed delta
-        q        = delta_dist(w*z, self.delta, alpha, limit="max")
-
+        q = 1
 
       loss     = (q * w * losses).sum()
       self.log_dict({
