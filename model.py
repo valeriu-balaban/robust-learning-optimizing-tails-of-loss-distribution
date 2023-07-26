@@ -303,13 +303,19 @@ class Model(pl.LightningModule):
         q_n, delta_n   = distributional_moments_penalization(z, rho_n, alpha)
         self.delta_n = 0.95 * getattr(self, 'delta_n', delta_n) + 0.05 * delta_n
 
-        q_c, delta_c   = distributional_variance_penalization(q_n * z, rho_c)
-        self.delta_c = 0.95 * getattr(self, 'delta_c', delta_c) + 0.05 * delta_c
+        if self.current_epoch >= 40:
+          q_c, delta_c   = distributional_variance_penalization(q_n * z, rho_c)
+          self.delta_c = 0.95 * getattr(self, 'delta_c', delta_c) + 0.05 * delta_c
+        else:
+          q_c = 1
       
       else:
         # use previously computed delta
         q_n     = delta_dist(z, self.delta_n, alpha, limit="min")
-        q_c     = delta_dist(z, self.delta_c, 2, limit="max")
+        if self.current_epoch >= 40:
+          q_c     = delta_dist(z, self.delta_c, 2, limit="max")
+        else:
+          q_c = 1
 
       loss     = (q_c * q_n * losses).sum()
 
