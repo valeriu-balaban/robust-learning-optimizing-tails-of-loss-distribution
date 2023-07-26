@@ -356,7 +356,7 @@ class Model(pl.LightningModule):
           # use previously computed delta
           q        = delta_dist(w*z, self.delta, alpha, limit="max")
       else:
-        q = 1
+        q = torch.ones_lize(z)
 
       loss     = (q * w * losses).sum()
       self.log_dict({
