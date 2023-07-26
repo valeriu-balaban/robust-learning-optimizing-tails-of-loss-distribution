@@ -316,8 +316,8 @@ class Model(pl.LightningModule):
       self.log_dict({
         "f-divergence": f_div(q_n, alpha),
         "prob-sample-utilization": self.sample_utilization(q_n),
-        "prob-sample-utilization-noisy": self.sample_utilization(q[y_target != y_target_original]),
-        "prob-sample-utilization-clean": self.sample_utilization(q[y_target == y_target_original]),
+        "prob-sample-utilization-noisy": self.sample_utilization(q_n[y_target != y_target_original]),
+        "prob-sample-utilization-clean": self.sample_utilization(q_n[y_target == y_target_original]),
         "tail-metric": compute_tail_metric(losses),
         "loss-noisy-mean": z[y_target != y_target_original].mean(),
         "loss-noisy-std": z[y_target != y_target_original].std(),
@@ -325,7 +325,9 @@ class Model(pl.LightningModule):
         "loss-clean-mean": z[y_target == y_target_original].mean(),
         "loss-clean-std": z[y_target == y_target_original].std(),
         "loss-clean-min": z[y_target == y_target_original].min(),
-        "delta": self.delta,
+        "delta_c": self.delta_c,
+        "delta_n": self.delta_n,
+        
       })
 
     elif self.hparams["loss_function"] == "ciw-dro":
