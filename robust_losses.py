@@ -551,7 +551,7 @@ def distributional_variance_penalization(z, lmbda=0.0, tol=1e-5, max_iter=100):
 
 
   # Set search lower bound
-  rho_min = -(1.0 / ((2 * target_D_chi2 + 1).sqrt() - 1)) * z.max()
+  rho_min = -(1.0 / (sqrt(2 * target_D_chi2 + 1) - 1)) * z.max()
   lower   = f(rho_min)
 
   # Samples are too close
