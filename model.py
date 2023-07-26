@@ -348,15 +348,15 @@ class Model(pl.LightningModule):
       
       if self.global_step % 10 == 0:
         # update delta 
-        q, delta   = distributional_variance_penalization(z, rho)
+        q, delta   = distributional_variance_penalization(w*z, rho)
         self.delta = 0.95 * getattr(self, 'delta', delta) + 0.05 * delta
       
       else:
         # use previously computed delta
-        q        = delta_dist(z, self.delta, alpha, limit="max")
+        q        = delta_dist(w*z, self.delta, alpha, limit="max")
 
 
-      loss     = (q * losses).sum()
+      loss     = (q * w * losses).sum()
       self.log_dict({
         "f-divergence": f_div(q, alpha),
         "prob-sample-utilization": self.sample_utilization(q),
