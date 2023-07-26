@@ -331,7 +331,7 @@ class Model(pl.LightningModule):
         "loss-clean-mean": z[y_target == y_target_original].mean(),
         "loss-clean-std": z[y_target == y_target_original].std(),
         "loss-clean-min": z[y_target == y_target_original].min(),
-        "delta_c": self.delta_c,
+        # "delta_c": self.delta_c,
         "delta_n": self.delta_n,
         
       })
