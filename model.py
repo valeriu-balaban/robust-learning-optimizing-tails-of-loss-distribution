@@ -304,10 +304,10 @@ class Model(pl.LightningModule):
         self.delta_n = 0.95 * getattr(self, 'delta_n', delta_n) + 0.05 * delta_n
 
         if self.current_epoch >= self.hparams["dro_start_epoch"]:
-          q_c, delta_c   = distributional_variance_penalization(q_n * z, rho_c)
+          q_c, delta_c   = distributional_variance_penalization(z.shape[0] * q_n * z, rho_c)
           self.delta_c = 0.95 * getattr(self, 'delta_c', delta_c) + 0.05 * delta_c
         else:
-          q_c = 1
+          q_c = 1.0 / z.shape[0]
       
       else:
         # use previously computed delta
@@ -315,9 +315,9 @@ class Model(pl.LightningModule):
         if self.current_epoch >= self.hparams["dro_start_epoch"] and hasattr(self, 'delta_c'):
           q_c     = delta_dist(z, self.delta_c, 2, limit="max")
         else:
-          q_c = 1
+          q_c = 1.0 / z.shape[0]
 
-      loss     = (q_c * q_n * losses).sum()
+      loss     = (q_c * z.shape[0] * q_n * losses).sum()
 
       self.log_dict({
         "f-divergence": f_div(q_n, alpha),
