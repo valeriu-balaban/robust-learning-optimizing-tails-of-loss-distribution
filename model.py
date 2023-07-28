@@ -303,7 +303,7 @@ class Model(pl.LightningModule):
         q_n, delta_n   = distributional_moments_penalization(z, rho_n, alpha)
         self.delta_n = 0.95 * getattr(self, 'delta_n', delta_n) + 0.05 * delta_n
 
-        if self.current_epoch >= 20:
+        if self.current_epoch >= self.hparams["dro_start_epoch"]:
           q_c, delta_c   = distributional_variance_penalization(q_n * z, rho_c)
           self.delta_c = 0.95 * getattr(self, 'delta_c', delta_c) + 0.05 * delta_c
         else:
@@ -312,7 +312,7 @@ class Model(pl.LightningModule):
       else:
         # use previously computed delta
         q_n     = delta_dist(z, self.delta_n, alpha, limit="min")
-        if self.current_epoch >= 20 and hasattr(self, 'delta_c'):
+        if self.current_epoch >= self.hparams["dro_start_epoch"] and hasattr(self, 'delta_c'):
           q_c     = delta_dist(z, self.delta_c, 2, limit="max")
         else:
           q_c = 1
